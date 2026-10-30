@@ -1,0 +1,39 @@
+**/*build*/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# pytest basetemp: kept in-repo because /tmp is noexec in some environments and
+# this suite executes compiled fixtures (see pyproject.toml).
+.pytest-tmp/
+
+# Agent output. Globbed, because `out/` and `output/` were not the only names
+# used in practice: ad-hoc runs with --output-dir produced out_parser/, out_sf/
+# and out_held/, and one of them was caught a moment before being committed.
+# Anything starting with "out" in a project root is a generated artifact here.
+out*/
+
+# Compiled example binaries. An ALLOWLIST rather than a list of binary names:
+# the three names were hardcoded (buggy, bugs, parser), so every new example
+# silently became committable until someone remembered to add a line. This
+# inverts the default -- everything inside an example directory is ignored
+# except the file types an example is made of. A new source type needs a new
+# negation here, which is the safe direction to fail in.
+examples/*/*
+!examples/*/*.c
+!examples/*/*.h
+!examples/*/Makefile
+!examples/*/README.md
+!examples/*/*.gdb
+
+# local, uncommitted config override (container host address)
+config.local.yaml
+
+# llama.cpp download cache and server log
+.llama.cpp/
+

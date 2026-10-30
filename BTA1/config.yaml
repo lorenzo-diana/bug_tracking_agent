@@ -1,0 +1,114 @@
+# Every tunable in this project lives here.
+#
+# There are no magic numbers in the source: if you want to change behaviour, you
+# change this file. CLI flags exist (--provider, --project-root, --output) but
+# only as overrides -- this file is the source of truth.
+#
+# Precedence: built-in defaults -> config.yaml -> CLI flag.
+# Secrets come from the environment via ${VAR}, never written here.
+
+llm:
+  provider: llamacpp        # selects one block from `providers` below
+  temperature: 0.2          # low: we want reproducible debugging, not prose
+  max_tokens: 2048
+
+  providers:
+    # --- Local servers: no API key, but the OpenAI SDK requires a non-empty
+    # --- string, hence the "not-needed" placeholder.
+    #
+    # See docs/llm-server-setup.md for the exact launch commands, the flags
+    # that make tool calling work, and how to pick the right Qwen3 variant.
+
+    # llama.cpp -- the CPU choice. Works on AVX2 (no AVX-512 needed), and a
+    # Q4 quant of Qwen3-4B is ~2.5 GB instead of ~16 GB at float32.
+    llamacpp:
+      # 172.17.0.1 is the Docker bridge gateway: the address a container uses to
+      # reach a llama-server running on the HOST. (127.0.0.1 inside a container
+      # is the container's own loopback, so it will never find the host.)
+      #
+      # Override without editing this file:
+      #   export LLM_BASE_URL=http://127.0.0.1:8000/v1     # same machine
+      # run_from_scratch.sh does exactly that, because it starts its own server
+      # locally.
+      base_url: ${LLM_BASE_URL:-http://172.17.0.1:8000/v1}
+      api_key: not-needed
+      # llama-server serves a single model and ignores this field, but matching
+      # the real name keeps logs and traces readable.
+      model: unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M
+
+    # vLLM -- the GPU choice, and what you would deploy for a class.
+    # Needs CUDA: there is no CPU wheel on PyPI, and the x86 CPU backend
+    # requires AVX-512.
+    vllm:
+      base_url: http://127.0.0.1:8000/v1
+      api_key: not-needed
+      # Matches --served-model-name; use the full HF path if you omit that flag.
+      model: qwen3-4b
+
+    # Ollama -- the zero-build fallback. Note its `qwen3:4b` is the HYBRID
+    # THINKING model, and thinking output collides with tool-call parsing.
+    # Prefer llama.cpp, where you can pin the non-thinking Instruct variant.
+    ollama:
+      base_url: http://127.0.0.1:11434/v1
+      api_key: not-needed
+      model: qwen3:4b
+
+    openai:
+      base_url: null        # null => the SDK's default endpoint
+      api_key: ${OPENAI_API_KEY}
+      model: gpt-4o-mini
+
+    # Anthropic's OpenAI-compatible endpoint. Present so you can isolate
+    # "the agent reasons badly" from "the local model cannot call tools".
+    anthropic:
+      base_url: https://api.anthropic.com/v1/
+      api_key: ${ANTHROPIC_API_KEY}
+      model: claude-sonnet-4-5
+
+agent:
+  project_root: examples/overflow   # the folder the agent is asked to debug
+  # A DIRECTORY: a project may contain several bugs, and the agent writes one
+  # .gdb script per bug it reproduces (bug-01-<slug>.gdb, bug-02-<slug>.gdb...).
+  output_dir: out
+  # Finding N bugs needs more turns than finding one: budget roughly 4-6
+  # iterations per bug, plus a few for orientation.
+  max_iterations: 24
+  max_bugs: 10                      # hard cap on saved reproductions; -1 = no
+                                    # cap. Enforced by the MCP server, which
+                                    # refuses further saves and tells the agent
+                                    # to stop. 0 is rejected at startup.
+
+sandbox:
+  build_timeout_s: 60
+  gdb_timeout_s: 30           # raise this for long-running or complex targets
+  # MUST fit the model's context window. 8000 bytes is roughly 2k tokens; a
+  # single gdb dump at the old 65536 was ~16k tokens, which alone overflows a
+  # modest context. A tighter cap also pushes the agent toward narrower, more
+  # deliberate queries -- which is the behaviour we want anyway.
+  # Raise it only if you also raise the server's context length.
+  max_output_bytes: 8000
+  max_read_lines: 400         # forces the agent to read selectively
+
+  # Kernel-enforced via prlimit(1). These still hold if the gdb command
+  # denylist is bypassed -- that is the whole point of having them.
+  rlimit_cpu_s: 35            # must be >= gdb_timeout_s, and this is now
+                              # CHECKED at startup. Below it, the kernel
+                              # SIGKILLs the inferior before our timeout fires,
+                              # gdb reports "Program terminated with signal
+                              # SIGKILL", and the server cannot tell that from
+                              # a real crash -- so the limit would be saved as
+                              # a reproduced bug.
+  rlimit_address_space_bytes: 1073741824   # 1 GiB.
+                              # MEASURED FLOOR IS 512 MiB: this cap applies to
+                              # gdb itself, not just the target, and gdb is the
+                              # memory consumer. At 256 MiB gdb segfaults, at
+                              # 128 MiB it aborts, at 64 MiB it cannot start.
+  rlimit_processes: 256       # NOTE: RLIMIT_NPROC is per-UID, not per-process-
+                              # tree. Set too low, every fork by this user
+                              # fails -- not just the agent's.
+  rlimit_file_size_bytes: 10485760
+
+tracing:
+  enabled: true
+  endpoint: http://127.0.0.1:6006/v1/traces
+  service_name: bta1

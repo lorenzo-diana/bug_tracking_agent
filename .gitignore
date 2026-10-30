@@ -1,2 +1,14 @@
-**/*build*/
+# Repository-root ignores. Each agent folder has its own .gitignore for its
+# build artifacts (see BTA1/.gitignore).
 
+**/*build*/
+__pycache__/
+*.py[cod]
+
+# Crash artifacts. Every example in this repository segfaults on purpose and
+# `ulimit -c` is unlimited in some environments, so a core file can be written
+# into whichever directory the inferior ran in.
+core
+core.*
+vgcore.*
+*.core

@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bta1"
+version = "0.1.0"
+description = "Bugs Tracking Agent (BTA) - a teaching reference AI agent that writes gdb scripts reproducing C/C++ bugs"
+requires-python = ">=3.10"
+
+# Deliberately short. Every dependency has to earn its place in a teaching repo;
+# see docs/architecture.md for what we chose NOT to depend on (LangChain,
+# LangGraph, openai-agents, LlamaIndex) and why.
+dependencies = [
+    "mcp>=2,<3",                              # MCP server + client (official SDK)
+    "openai>=1.40",                          # OpenAI-compatible client (vLLM, etc.)
+    "pydantic>=2.6",                         # config + tool schema validation
+    "pyyaml>=6.0",                           # config.yaml
+    # Tracing: the light client half. The Phoenix *server* is in [trace] below,
+    # because you only need it when you want to look at traces.
+    "openinference-instrumentation-openai>=0.1",
+    "opentelemetry-sdk>=1.24",
+    "opentelemetry-exporter-otlp-proto-http>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+# Heavy (pandas et al), and only needed to *view* traces. `make phoenix` tells
+# you to install this if it is missing.
+trace = ["arize-phoenix>=5.0"]
+
+[project.scripts]
+bta1 = "bta1.agent.__main__:main"
+bta1-mcp = "bta1.mcp_server.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# /tmp is mounted noexec in some environments (including our dev container), and
+# this suite compiles and *executes* fixture binaries. pytest's default tmp_path
+# lives under /tmp, so a fixture built there dies with "Permission denied"
+# (exit 126) and the error points at permissions rather than the mount flag.
+# Keeping basetemp inside the repo avoids a half-hour detour. See
+# docs/implementation-plan.md.
+addopts = "--basetemp=.pytest-tmp"
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
